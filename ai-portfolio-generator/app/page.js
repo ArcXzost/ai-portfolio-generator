@@ -5,13 +5,13 @@ export default function Home() {
   return (
     <div>
       <Head>
-        <title>AI Resume Generator</title>
-        <meta name="description" content="Generate your resume using AI" />
+        <title>AI Portfolio Generator</title>
+        <meta name="description" content="Generate your portfolio website using AI" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
       <main>
-        <h1>AI Resume Generator</h1>
+        <h1>AI Portfolio Generator</h1>
         <ResumeGenerator />
       </main>
     </div>
