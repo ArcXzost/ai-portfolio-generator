@@ -1,0 +1,19 @@
+.callback-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  text-align: center;
+  padding: 2rem;
+}
+
+.callback-container h1 {
+  color: var(--primary-color);
+  margin-bottom: 1rem;
+}
+
+.callback-container p {
+  color: var(--text-color);
+  font-size: 1.2rem;
+} 
