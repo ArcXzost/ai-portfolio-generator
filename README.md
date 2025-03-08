@@ -71,16 +71,8 @@ Before running the project, ensure you have the following installed:
 
 ## Folder Structure
 
-resucraft/
-├── app/ # Next.js app directory
-│ ├── api/ # API routes
-│ ├── components/ # React components
-│ ├── globals.css # Global styles
-│ └── page.js # Main page
-├── public/ # Static assets
-├── .env.local # Environment variables
-├── package.json # Project dependencies
-└── README.md # This file
+![image](https://github.com/user-attachments/assets/0cb82e68-dbb3-446f-9e23-96efab25e142)
+
 
 ## Technologies Used
 
