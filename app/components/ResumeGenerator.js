@@ -1,16 +1,12 @@
 "use client"
 import { useState, useEffect } from 'react'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import PortfolioPreview from '@/app/components/PortfolioPreview';
+import PortfolioPreview from './PortfolioPreview';
 import LoadingSpinner from './LoadingSpinner';
-// import { Octokit } from "@octokit/rest";
 import GitHubTokenInstructions from './GitHubTokenInstructions';
-import { docco } from 'react-syntax-highlighter/dist/esm/styles/hljs';
+import ProgressTracker from './ProgressTracker';
 
 export default function ResumeGenerator() {
   const [file, setFile] = useState(null)
-  // const [apiKey, setApiKey] = useState('')/
   const [resumeData, setResumeData] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [viewMode, setViewMode] = useState('preview')
@@ -29,9 +25,12 @@ export default function ResumeGenerator() {
   const [isDeploying, setIsDeploying] = useState(false);
   const [deploymentStatus, setDeploymentStatus] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
   const [editedHTML, setEditedHTML] = useState('');
-  const [editedCSS, setEditedCSS] = useState('');
+  const [currentStage, setCurrentStage] = useState("");
+  const [showCodeHolders, setShowCodeHolders] = useState(true);
+  const [progress, setProgress] = useState(0); // Progress percentage
+  const [originalCSS, setOriginalCSS] = useState('');
+  const [currentView, setCurrentView] = useState("upload"); // Options: "upload", "generating", "preview"
 
   const handleFileChange = (event) => {
     const selectedFile = event.target.files[0]
@@ -40,63 +39,197 @@ export default function ResumeGenerator() {
     }
   }
 
-  // const handleApiKeyChange = (event) => {
-  //   setApiKey(event.target.value)
-  // }
-
-  const convertToBase64 = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = (event) => resolve(event.target.result)
-      reader.onerror = (error) => reject(error)
-      reader.readAsDataURL(file)
-    })
-  }
-
-  const handleSubmit = async (event) => {
-    event.preventDefault()
-    setIsLoading(true)
-
-    if (!file) {
-      alert('Please select a file')
-      setIsLoading(false)
-      return
-    }
-
+  const handleGenerate = async (event) => {
+    event.preventDefault();
+    setIsLoading(true);
+    setProgress(0);
+    setCurrentStage("Preparing resume data...");
+    setCurrentView("generating");
+    
     try {
-      let base64File = await convertToBase64(file)
-      base64File = base64File.substring(base64File.indexOf(',') + 1)
-
-      const response = await fetch('/api/generate', {
+      if (!file) throw new Error('Please upload a resume file');
+      
+      // 1. Extract text from PDF
+      setCurrentStage("Extracting text from resume...");
+      setProgress(10);
+      const base64File = await convertFileToBase64(file);
+      
+      // Extract text directly
+      const extractResponse = await fetch('/api/extract-text', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          base64File,
-          customizations
-        }),
-      })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base64File })
+      });
+      
+      if (!extractResponse.ok) {
+        const error = await extractResponse.json();
+        throw new Error(error.error || 'Failed to extract text');
+      }
+      
+      const { text: resumeText } = await extractResponse.json();
+      
+      // 2. Search for examples
+      setCurrentStage("Searching for portfolio examples...");
+      setProgress(20);
+      
+      const searchResponse = await fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keywords: resumeText })
+      });
+      
+      if (!searchResponse.ok) {
+        const error = await searchResponse.json();
+        throw new Error(error.error || 'Failed to search examples');
+      }
+      
+      const searchData = await searchResponse.json();
+      
+      // 3. Scrape examples
+      setCurrentStage("Analyzing portfolio examples...");
+      setProgress(30);
+      
+      const scrapeResponse = await fetch('/api/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ urls: searchData.urls })
+      });
+      
+      if (!scrapeResponse.ok) {
+        const error = await scrapeResponse.json();
+        throw new Error(error.error || 'Failed to analyze examples');
+      }
+      
+      const scrapeData = await scrapeResponse.json();
+      
+      // 4. Generate portfolio sections (2 at a time)
+      setCurrentStage("Starting portfolio generation...");
+      setProgress(40);
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+      // Define the sections to generate in pairs (except layout which is generated alone)
+      const sectionPairs = [
+        [{ name: 'layout-structure', displayName: 'layout structure' }], // Layout alone
+        [{ name: 'header', displayName: 'header section' }, 
+         { name: 'about', displayName: 'about section' }],
+        [{ name: 'skills', displayName: 'skills section' },
+         { name: 'projects', displayName: 'projects section' }],
+        [{ name: 'experience', displayName: 'experience section' },
+         { name: 'education', displayName: 'education section' }],
+        [{ name: 'contact', displayName: 'contact section' },
+         { name: 'footer', displayName: 'footer section' }]
+      ];
+
+      // Initialize the portfolio
+      let portfolio = { html: '', css: '' };
+
+      // Calculate progress increments
+      const baseProgress = 40; // We start at 40%
+      const remainingProgress = 50; // We have 50% left to go (leaving 10% for finalization)
+      const progressPerPair = remainingProgress / sectionPairs.length;
+
+      // Generate each section pair sequentially
+      for (let i = 0; i < sectionPairs.length; i++) {
+        const pair = sectionPairs[i];
+        const pairProgress = Math.round(baseProgress + (i * progressPerPair));
+        
+        // Display the sections being generated
+        const pairNames = pair.map(s => s.displayName).join(' and ');
+        setCurrentStage(`Generating ${pairNames}...`);
+        setProgress(pairProgress);
+        
+        // Make API call to generate this section pair
+        const sectionResponse = await fetch('/api/generate-sections', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sections: pair.map(s => s.name),
+            resumeText: resumeText,
+            currentPortfolio: portfolio,
+            customizations,
+            designData: scrapeData.data
+          })
+        });
+        
+        if (!sectionResponse.ok) {
+          const error = await sectionResponse.json();
+          throw new Error(error.error || `Failed to generate ${pairNames}`);
+        }
+        
+        const sectionResult = await sectionResponse.json();
+        
+        // Add these sections to our growing portfolio
+        for (const section of sectionResult.sections) {
+          portfolio.html += `\n<!-- ${section.name} section -->\n${section.html}`;
+          portfolio.css += `\n/* ${section.name} styles */\n${section.css}`;
+        }
       }
 
-      const data = await response.json()
-      setResumeData(data)
+      // Final step - finalization and quality check
+      setCurrentStage("Quality checking and enhancing portfolio...");
+      setProgress(90);
+
+      // Wrap the HTML in a container div if not already wrapped
+      if (!portfolio.html.includes('class="ai-resume-isolation"')) {
+        portfolio.html = `<div class="ai-resume-isolation">\n${portfolio.html}\n</div>`;
+      }
+
+      // Process the final portfolio (sanitizing, optimizing, scoping CSS)
+      const finalizeResponse = await fetch('/api/finalize-portfolio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ html: portfolio.html, css: portfolio.css })
+      });
+
+      if (!finalizeResponse.ok) {
+        const error = await finalizeResponse.json();
+        throw new Error(error.error || 'Failed to finalize portfolio');
+      }
+
+      const result = await finalizeResponse.json();
+
+      // Show completion
+      setCurrentStage("Portfolio generation complete!");
+      setProgress(100);
+
+      // Set the result data
+      setResumeData({
+        htmlStructure: result.html,
+        cssStyles: result.css
+      });
+      setEditedHTML(result.html);
+      setOriginalCSS(result.originalCss || result.css);
+
+      // Important: Make sure isLoading is set to false FIRST
+      setIsLoading(false);
+
+      // IMPORTANT: Explicitly set the view AFTER setting isLoading to false
+      // to ensure proper state sequence
+      setTimeout(() => {
+        setCurrentView("preview");
+      }, 50);
+      
     } catch (error) {
-      console.error('Error:', error)
-      alert('An error occurred while processing your request')
-    } finally {
-      setIsLoading(false)
+      console.error('Generation Error:', error);
+      alert(`Error: ${error.message}`);
+      setIsLoading(false);
+      setCurrentView("upload");
     }
-  }
+  };
+
+  // Helper function to convert file to base64
+  const convertFileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = error => reject(error);
+      reader.readAsDataURL(file);
+    });
+  };
 
   // Update edited code when new content is generated
   useEffect(() => {
     if (resumeData) {
       setEditedHTML(resumeData.htmlStructure);
-      setEditedCSS(resumeData.cssStyles);
     }
   }, [resumeData]);
 
@@ -106,12 +239,18 @@ export default function ResumeGenerator() {
       setResumeData(prev => ({
         ...prev,
         htmlStructure: editedHTML,
-        cssStyles: editedCSS
+        cssStyles: originalCSS
       }));
     }
-  }, [editedHTML, editedCSS]);
+  }, [editedHTML]);
 
   const handleSuggestion = async (suggestion) => {
+    if (!suggestion.trim() || !resumeData) return;
+    
+    setIsLoading(true);
+    setCurrentStage("Processing suggestion...");
+    setProgress(20);
+    
     try {
       const response = await fetch('/api/suggest', {
         method: 'POST',
@@ -125,6 +264,8 @@ export default function ResumeGenerator() {
         }),
       });
 
+      setProgress(60);
+      
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || 'Failed to get suggestions');
@@ -136,9 +277,19 @@ export default function ResumeGenerator() {
         htmlStructure: data.html,
         cssStyles: data.css
       }));
+      
+      // Update edited values to match new content
+      setEditedHTML(data.html);
+      
+      setCurrentStage("Suggestion applied successfully!");
+      setProgress(100);
+      setSuggestion(''); // Clear suggestion input after successful application
     } catch (error) {
       console.error('Suggestion Error:', error);
       alert(`Failed to get suggestions: ${error.message}`);
+      setCurrentStage("Suggestion failed");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -152,7 +303,7 @@ export default function ResumeGenerator() {
   const renderCustomizationForm = () => (
     <div className={`customization-overlay ${showCustomization ? 'visible' : ''}`}>
       <div className="customization-content">
-        <button 
+        <button
           className="close-button"
           onClick={() => setShowCustomization(false)}
         >
@@ -161,8 +312,8 @@ export default function ResumeGenerator() {
         <h3>Customize Your Portfolio</h3>
         <div className="form-group">
           <label>Theme:</label>
-          <select 
-            value={customizations.theme} 
+          <select
+            value={customizations.theme}
             onChange={(e) => handleCustomizationChange('theme', e.target.value)}
           >
             <option value="dark">Dark</option>
@@ -173,8 +324,8 @@ export default function ResumeGenerator() {
 
         <div className="form-group">
           <label>Layout:</label>
-          <select 
-            value={customizations.layout} 
+          <select
+            value={customizations.layout}
             onChange={(e) => handleCustomizationChange('layout', e.target.value)}
           >
             <option value="modern">Modern</option>
@@ -185,8 +336,8 @@ export default function ResumeGenerator() {
 
         <div className="form-group">
           <label>Color Scheme:</label>
-          <select 
-            value={customizations.colorScheme} 
+          <select
+            value={customizations.colorScheme}
             onChange={(e) => handleCustomizationChange('colorScheme', e.target.value)}
           >
             <option value="blue">Blue</option>
@@ -198,8 +349,8 @@ export default function ResumeGenerator() {
 
         <div className="form-group">
           <label>Font Family:</label>
-          <select 
-            value={customizations.fontFamily} 
+          <select
+            value={customizations.fontFamily}
             onChange={(e) => handleCustomizationChange('fontFamily', e.target.value)}
           >
             <option value="sans-serif">Sans-serif</option>
@@ -210,8 +361,8 @@ export default function ResumeGenerator() {
 
         <div className="form-group">
           <label>
-            <input 
-              type="checkbox" 
+            <input
+              type="checkbox"
               checked={customizations.showProfilePicture}
               onChange={(e) => handleCustomizationChange('showProfilePicture', e.target.checked)}
             />
@@ -221,8 +372,8 @@ export default function ResumeGenerator() {
 
         <div className="form-group">
           <label>
-            <input 
-              type="checkbox" 
+            <input
+              type="checkbox"
               checked={customizations.showSocialLinks}
               onChange={(e) => handleCustomizationChange('showSocialLinks', e.target.checked)}
             />
@@ -232,8 +383,8 @@ export default function ResumeGenerator() {
 
         <div className="form-group">
           <label>
-            <input 
-              type="checkbox" 
+            <input
+              type="checkbox"
               checked={customizations.showSkillsChart}
               onChange={(e) => handleCustomizationChange('showSkillsChart', e.target.checked)}
             />
@@ -263,29 +414,32 @@ export default function ResumeGenerator() {
       return;
     }
 
-    setIsDeploying(true);
-    setDeploymentStatus('');
-
     try {
-      const response = await fetch('/api/deploy', {
+      setIsDeploying(true);
+      setDeploymentStatus('Preparing files for deployment...');
+      
+      // Use the original unscoped CSS for deployment
+      const cssToUse = originalCSS;
+      
+      const deployResponse = await fetch('/api/deploy', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          githubToken,
-          html: resumeData.htmlStructure,
-          css: resumeData.cssStyles
+          htmlContent: editedHTML,
+          cssContent: cssToUse, // Use original CSS for deployment
+          token: githubToken,
         }),
       });
 
-      const data = await response.json();
-      if (!response.ok) {
+      const data = await deployResponse.json();
+      if (!deployResponse.ok) {
         throw new Error(data.error || 'Deployment failed');
       }
 
       setDeploymentStatus(`Deployment successful! Your portfolio is live at: ${data.url}`);
-      
+
       // Open the deployed website in a new tab
       window.open(data.url, '_blank');
     } catch (error) {
@@ -300,7 +454,7 @@ export default function ResumeGenerator() {
     setIsAuthenticating(true);
     // Open auth in new window
     const authWindow = window.open('/api/auth', 'github-auth', 'width=500,height=600');
-    
+
     // Focus the new window
     if (authWindow) {
       authWindow.focus();
@@ -325,85 +479,157 @@ export default function ResumeGenerator() {
   }, []);
 
   return (
-    <div>
-      <form onSubmit={handleSubmit}>
-        <input type="file" onChange={handleFileChange} accept=".pdf" />
-        <div className="button-group">
-          <button 
-            type="button" 
-            className="customize-button"
-            onClick={() => setShowCustomization(!showCustomization)}
-          >
-            Customize
-          </button>
-          <button type="submit" disabled={isLoading || !file}>
-            {isLoading ? 'Generating...' : 'Generate'}
-          </button>
+    <div className="resume-generator">
+      {currentView === "upload" && (
+        <div className="upload-section">
+          <form onSubmit={handleGenerate}>
+            <input type="file" onChange={handleFileChange} accept=".pdf" />
+            <div className="button-group">
+              <button
+                type="button"
+                className="customize-button"
+                onClick={() => setShowCustomization(!showCustomization)}
+              >
+                Customize
+              </button>
+              <button type="submit" disabled={isLoading || !file}>
+                {isLoading ? 'Generating...' : 'Generate Portfolio'}
+              </button>
+            </div>
+          </form>
+          {renderCustomizationForm()}
         </div>
-      </form>
-      {renderCustomizationForm()}
+      )}
       
-      {isLoading && <LoadingSpinner />}
-
-      {!isLoading && resumeData && (
-        <div className="preview-section">
-          <div className="preview-header">
-            <button 
-              onClick={() => setViewMode('preview')}
-              className={viewMode === 'preview' ? 'active' : ''}
-            >
-              Preview
-            </button>
-            <button 
-              onClick={() => setViewMode('code')}
-              className={viewMode === 'code' ? 'active' : ''}
-            >
-              Code
-            </button>
+      {currentView === "generating" && (
+        <div className="generation-section">
+          <div className="spinner-container" style={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            textAlign: 'center',
+            width: '100%', 
+            padding: '20px 0'
+          }}>
+            <LoadingSpinner />
+            <ProgressTracker currentStage={currentStage} progress={progress} />
           </div>
+        </div>
+      )}
+      
+      {currentView === "preview" && (
+        <div className="preview-section">
+          {/* Add loading overlay that appears when processing suggestions */}
+          {isLoading && (
+            <div className="suggestion-loading-overlay">
+              <div className="spinner-container" style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                textAlign: 'center',
+                width: '100%', 
+                padding: '20px 0'
+              }}>
+                <LoadingSpinner />
+                <div className="suggestion-progress">
+                  <p className="current-stage">{currentStage}</p>
+                  <div className="progress-bar-container">
+                    <div className="progress-bar">
+                      <div className="progress-fill" style={{ width: `${progress}%` }}></div>
+                    </div>
+                    <span className="progress-percentage">{progress}%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           
+          <div className="upload-section">
+          <form onSubmit={handleGenerate}>
+            <input type="file" onChange={handleFileChange} accept=".pdf" />
+            <div className="button-group">
+              <button
+                type="button"
+                className="customize-button"
+                onClick={() => setShowCustomization(!showCustomization)}
+              >
+                Customize
+              </button>
+              <button type="submit" disabled={isLoading || !file}>
+                {isLoading ? 'Generating...' : 'Generate Portfolio'}
+              </button>
+            </div>
+          </form>
+          {renderCustomizationForm()}
+          </div>
+          <div className="preview-controls-container">
+            <div className="preview-header">
+              <button
+                onClick={() => setViewMode('preview')}
+                className={viewMode === 'preview' ? 'active' : ''}
+              >
+                Preview
+              </button>
+              <button
+                onClick={() => setViewMode('code')}
+                className={viewMode === 'code' ? 'active' : ''}
+              >
+                Code
+              </button>
+            </div>
+          </div>
+
           {viewMode === 'preview' ? (
             <>
-              <PortfolioPreview 
-                htmlStructure={resumeData.htmlStructure} 
-                cssStyles={resumeData.cssStyles} 
+              <PortfolioPreview
+                htmlStructure={resumeData.htmlStructure}
+                cssStyles={originalCSS}
               />
             </>
           ) : (
             <div className="code-container" style={{ width: '100%' }}>
-              <div className="code-section" style={{ width: '90%' }}>
-                <h4>HTML</h4>
-                <textarea
-                  value={editedHTML}
-                  onChange={(e) => setEditedHTML(e.target.value)}
-                  className="code-editor"
-                />
-              </div>
-              
-              <div className="code-section" style={{ width: '90%' }}>
-                <h4>CSS</h4>
-                <textarea
-                  value={editedCSS}
-                  onChange={(e) => setEditedCSS(e.target.value)}
-                  className="code-editor"
-                />
-              </div>
+              {showCodeHolders && (
+                <div>
+                  <div className="code-section" style={{ width: '90%' }}>
+                    <h4>HTML</h4>
+                    <textarea
+                      value={editedHTML}
+                      onChange={(e) => setEditedHTML(e.target.value)}
+                      className="code-editor"
+                    />
+                  </div>
+
+                  <div className="code-section" style={{ width: '90%' }}>
+                    <h4>CSS (Original/Unscoped)</h4>
+                    <textarea
+                      value={originalCSS}
+                      onChange={(e) => setEditedCSS(e.target.value)}
+                      className="code-editor"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
           <div className="suggestion-box" style={{ alignItems: 'center', justifyContent: 'center' }}>
-                <textarea
-                  value={suggestion}
-                  onChange={(e) => setSuggestion(e.target.value)}
-                  placeholder="Suggest modifications..."
-                  disabled={isLoading}
-                />
-                <button 
-                  onClick={() => handleSuggestion(suggestion)}
-                  disabled={isLoading || !suggestion.trim()}
-                >
-                  Submit Suggestion
-                </button>
-              </div>
+            <textarea
+              value={suggestion}
+              onChange={(e) => setSuggestion(e.target.value)}
+              placeholder="Suggest modifications..."
+              disabled={isLoading}
+            />
+            <button
+              onClick={() => handleSuggestion(suggestion)}
+              disabled={isLoading || !suggestion.trim()}
+            >
+              Submit Suggestion
+            </button>
+          </div>
+          
+          {/* Keep the customization form */}
+          {renderCustomizationForm()}
         </div>
       )}
 
@@ -412,14 +638,14 @@ export default function ResumeGenerator() {
           <h3><center>Deploy to GitHub Pages</center></h3>
           <GitHubTokenInstructions />
           <div className="deployment-form">
-            <button 
+            <button
               onClick={handleGitHubAuth}
               disabled={isAuthenticating || !!githubToken}
             >
               {githubToken ? 'Authenticated with GitHub' : 'Sign in with GitHub'}
             </button>
             {githubToken && (
-              <button 
+              <button
                 onClick={handleDeployToGitHub}
                 disabled={isDeploying}
               >

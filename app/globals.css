@@ -447,3 +447,318 @@ pre {
   border: 1px solid var(--primary-color) !important;
   margin: 0 !important;
 }
+
+/* Remove URL-specific styling if any */
+.scrape-inputs {
+  /* Remove any specific URL input styling */
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+/* Keep general form styling */
+input[type="text"] {
+  /* General text input styling remains */
+  margin-bottom: 1rem;
+  width: 100%;
+  max-width: 300px;
+  padding: 0.5rem;
+  background-color: var(--secondary-color);
+  color: var(--text-color);
+  border: 1px solid var(--primary-color);
+  border-radius: 4px;
+}
+
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.loading-spinner {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3498db;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  margin-right: 20px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Progress Tracker Styles */
+.progress-tracker {
+  width: 100%;
+  margin: 20px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.progress-steps {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: #f5f5f5;
+  border-radius: 12px;
+}
+
+.progress-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  transition: all 0.3s ease;
+  padding: 5px;
+  width: 80px;
+}
+
+.step-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: #e0e0e0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  margin-bottom: 5px;
+  transition: all 0.3s ease;
+}
+
+.progress-step.active .step-icon {
+  background-color: #3498db;
+  color: white;
+  transform: scale(1.1);
+  box-shadow: 0 0 10px rgba(52, 152, 219, 0.5);
+}
+
+.progress-step.completed .step-icon {
+  background-color: #2ecc71;
+  color: white;
+}
+
+.step-name {
+  font-size: 10px;
+  font-weight: 500;
+  text-align: center;
+  color: #777;
+  max-width: 70px;
+}
+
+.progress-step.active .step-name {
+  color: #3498db;
+  font-weight: 600;
+}
+
+.step-connector {
+  position: absolute;
+  width: 30px;
+  height: 2px;
+  background-color: #e0e0e0;
+  right: -20px;
+  top: 25px;
+}
+
+.step-connector.completed {
+  background-color: #2ecc71;
+}
+
+.progress-details {
+  width: 90%;
+  max-width: 600px;
+  text-align: center;
+}
+
+.current-stage {
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 10px;
+}
+
+.progress-bar-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 12px;
+  background-color: #e0e0e0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3498db, #2ecc71);
+  border-radius: 6px;
+  transition: width 0.4s ease-in-out;
+}
+
+.progress-percentage {
+  font-weight: bold;
+  color: #333;
+  min-width: 45px;
+}
+
+@media (max-width: 768px) {
+  .progress-steps {
+    gap: 4px;
+  }
+  
+  .progress-step {
+    width: 60px;
+  }
+  
+  .step-icon {
+    width: 35px;
+    height: 35px;
+    font-size: 16px;
+  }
+  
+  .step-name {
+    font-size: 9px;
+  }
+}
+
+/* Add these styles for the simple progress tracker mode */
+
+.simple-progress-tracker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  min-height: 200px;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.spinner-container {
+  margin-bottom: 2rem;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  border-left-color: #3498db;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Add these styles to your globals.css file */
+
+.preview-controls-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  margin-bottom: 20px;
+}
+
+.upload-section-mini {
+  display: flex;
+  flex-direction: column;
+  background-color: #f5f5f5;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.upload-section-mini h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-size: 1.2rem;
+  color: #333;
+}
+
+.upload-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.upload-controls input[type="file"] {
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background-color: white;
+}
+
+.preview-header {
+  display: flex;
+  margin-bottom: 10px;
+}
+
+.preview-header button {
+  padding: 8px 16px;
+  background: none;
+  border: 1px solid #ccc;
+  cursor: pointer;
+  border-bottom: none;
+  margin-right: 5px;
+  border-radius: 5px 5px 0 0;
+}
+
+.preview-header button.active {
+  background-color: #007bff;
+  color: white;
+  border-color: #007bff;
+}
+
+@media (min-width: 768px) {
+  .upload-controls {
+    flex-direction: row;
+    align-items: center;
+  }
+  
+  .upload-controls input[type="file"] {
+    flex: 1;
+  }
+  
+  .button-group {
+    display: flex;
+    gap: 10px;
+  }
+}
+
+.portfolio-preview {
+  width: 100%;
+  height: 600px;
+  margin: 20px 0;
+  position: relative;
+}
+
+.preview-iframe {
+  width: 100%;
+  height: 100%;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background-color: white;
+  transition: opacity 0.3s ease;
+}

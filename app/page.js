@@ -1,7 +1,16 @@
+'use client'
 import Head from 'next/head'
-import ResumeGenerator from '@/app/components/ResumeGenerator'
+import ResumeGenerator from './components/ResumeGenerator'
+import { useEffect } from 'react'
 
 export default function Home() {
+  useEffect(() => {
+    fetch('/')
+      .then((response) => response.text())
+      .then((data) => console.log('RSC Payload:', data))
+      .catch((error) => console.error('RSC Payload Error:', error));
+  }, []);
+
   return (
     <div>
       <Head>
