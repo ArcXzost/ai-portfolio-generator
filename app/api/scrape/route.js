@@ -1,6 +1,4 @@
 import { NextResponse } from 'next/server';
-import { chromium } from 'playwright-core';
-import chromiumBinary from '@sparticuz/chromium';
 
 // Helper function to validate URLs
 async function validateUrl(url) {
@@ -16,9 +14,13 @@ async function validateUrl(url) {
   }
 }
 
-// Browser launch function with @sparticuz/chromium
+// Dynamic browser launch function
 async function getBrowserFromPool() {
   try {
+    // Dynamic imports to avoid bundling issues
+    const { chromium } = await import('playwright-core');
+    const chromiumBinary = (await import('@sparticuz/chromium')).default;
+    
     const executablePath = await chromiumBinary.executablePath();
     
     const browser = await chromium.launch({
@@ -41,12 +43,10 @@ function returnBrowserToPool(browser) {
 }
 
 function extractRelevantSections(html) {
-  // Implementation for extracting relevant sections of HTML
   return html;
 }
 
 function extractRelevantStyles(css) {
-  // Implementation for extracting relevant styles of CSS
   return css;
 }
 
@@ -60,21 +60,18 @@ export async function POST(req) {
       return NextResponse.json({ error: 'URLs array is required' }, { status: 400 });
     }
 
-    // Limit number of URLs to scrape
-    const urlsToScrape = urls.slice(0, 3); // Reduced for serverless limits
+    const urlsToScrape = urls.slice(0, 3);
 
-    // Get browser instance with @sparticuz/chromium
+    // Get browser instance
     browser = await getBrowserFromPool();
 
-    // Validate URLs before scraping
+    // Validate URLs
     const validUrls = await Promise.all(
       urlsToScrape.map(async url => {
         const isValid = await validateUrl(url);
         return isValid ? url : null;
       })
     ).then(results => results.filter(url => url !== null));
-
-    console.log('Valid URLs:', validUrls);
 
     if (validUrls.length === 0) {
       return NextResponse.json({
@@ -84,23 +81,20 @@ export async function POST(req) {
       });
     }
 
-    // Process URLs sequentially to avoid memory issues in serverless
+    // Process URLs sequentially
     const results = [];
     for (const url of validUrls) {
       try {
         const context = await browser.newContext();
         const page = await context.newPage();
         
-        // Set navigation timeout
         page.setDefaultNavigationTimeout(15000);
         
-        // Navigate to the URL
         await page.goto(url, { 
           waitUntil: 'domcontentloaded',
           timeout: 15000 
         });
 
-        // Get page content
         const html = await page.content();
         const css = await page.evaluate(() => {
           try {
@@ -113,11 +107,10 @@ export async function POST(req) {
           }
         });
 
-        // Extract only necessary HTML and CSS
         const minimalHTML = extractRelevantSections(html);
         const minimalCSS = extractRelevantStyles(css);
 
-        await context.close(); // Close context instead of just page
+        await context.close();
         
         results.push({
           url,
@@ -150,7 +143,6 @@ export async function POST(req) {
       details: error.message 
     }, { status: 500 });
   } finally {
-    // Always close browser
     if (browser) {
       returnBrowserToPool(browser);
     }
