@@ -16,10 +16,20 @@ async function validateUrl(url) {
   }
 }
 
-// Browser launch function optimized for Vercel
+// Browser launch function with correct configuration for Vercel
 async function getBrowserFromPool() {
   const browser = await puppeteer.launch({
-    args: chromium.args,
+    args: [
+      ...chromium.args,
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--single-process',
+      '--disable-gpu'
+    ],
     defaultViewport: chromium.defaultViewport,
     executablePath: await chromium.executablePath(),
     headless: chromium.headless,
@@ -80,8 +90,6 @@ export async function POST(req) {
       try {
         const page = await browser.newPage();
         
-        await page.setDefaultTimeout(15000);
-        
         await page.goto(url, { 
           waitUntil: 'domcontentloaded',
           timeout: 15000 
@@ -99,15 +107,12 @@ export async function POST(req) {
           }
         });
 
-        const minimalHTML = extractRelevantSections(html);
-        const minimalCSS = extractRelevantStyles(css);
-
         await page.close();
         
         results.push({
           url,
-          html: minimalHTML,
-          css: minimalCSS,
+          html: extractRelevantSections(html),
+          css: extractRelevantStyles(css),
           success: true,
         });
       } catch (error) {
