@@ -27,7 +27,6 @@ async function fetchPageContent(url) {
         'Connection': 'keep-alive',
         'Upgrade-Insecure-Requests': '1',
       },
-      timeout: 15000
     });
 
     if (!response.ok) {
@@ -41,9 +40,13 @@ async function fetchPageContent(url) {
   }
 }
 
-// Extract relevant content using Cheerio
+// Extract relevant content using Cheerio with null checks
 function extractRelevantSections(html) {
   try {
+    if (!html || typeof html !== 'string') {
+      return '';
+    }
+
     const $ = cheerio.load(html);
     
     // Remove unwanted elements
@@ -52,9 +55,43 @@ function extractRelevantSections(html) {
     $('.ad, .advertisement, .popup, .modal').remove();
     $('[id*="ad"], [class*="ad"]').remove();
     
-    // Extract main content areas
-    const mainContent = $('main, [role="main"], .main, .content, .post, .article, article').html() || 
-                       $('body').html();
+    // Try multiple selectors to find main content
+    let mainContent = null;
+    
+    // Try main content selectors in order of preference
+    const selectors = [
+      'main',
+      '[role="main"]',
+      '.main',
+      '.content',
+      '.post',
+      '.article',
+      'article',
+      '#content',
+      '#main',
+      '.container',
+      'body'
+    ];
+    
+    for (const selector of selectors) {
+      const element = $(selector).first();
+      if (element.length > 0) {
+        mainContent = element.html();
+        if (mainContent && mainContent.trim().length > 0) {
+          break;
+        }
+      }
+    }
+    
+    // Fallback to body if nothing found
+    if (!mainContent) {
+      mainContent = $('body').html() || html;
+    }
+    
+    // Ensure mainContent is a string
+    if (!mainContent || typeof mainContent !== 'string') {
+      return html;
+    }
     
     // Clean up the HTML
     const cleanedHtml = mainContent
@@ -65,20 +102,27 @@ function extractRelevantSections(html) {
     return cleanedHtml;
   } catch (error) {
     console.error('Error extracting sections:', error);
-    return html;
+    return html || '';
   }
 }
 
-// Extract CSS styles using Cheerio
+// Extract CSS styles using Cheerio with null checks
 function extractRelevantStyles(html) {
   try {
+    if (!html || typeof html !== 'string') {
+      return '';
+    }
+
     const $ = cheerio.load(html);
     
     let styles = '';
     
     // Extract inline styles
     $('style').each((i, el) => {
-      styles += $(el).html() + '\n';
+      const styleContent = $(el).html();
+      if (styleContent) {
+        styles += styleContent + '\n';
+      }
     });
     
     // Extract CSS link references
@@ -115,6 +159,8 @@ export async function POST(req) {
       })
     ).then(results => results.filter(url => url !== null));
 
+    console.log('Valid URLs to scrape:', validUrls);
+
     if (validUrls.length === 0) {
       return NextResponse.json({
         success: true,
@@ -123,12 +169,18 @@ export async function POST(req) {
       });
     }
 
-    // Process URLs sequentially to avoid overwhelming the target servers
+    // Process URLs sequentially
     const results = [];
     for (const url of validUrls) {
       try {
+        console.log(`Scraping: ${url}`);
+        
         // Fetch HTML content
         const html = await fetchPageContent(url);
+        
+        if (!html) {
+          throw new Error('No HTML content received');
+        }
         
         // Extract relevant sections and styles
         const minimalHTML = extractRelevantSections(html);
@@ -152,7 +204,9 @@ export async function POST(req) {
           success: true,
         });
         
-        // Add small delay between requests to be respectful
+        console.log(`Successfully scraped: ${url}`);
+        
+        // Add small delay between requests
         await new Promise(resolve => setTimeout(resolve, 500));
         
       } catch (error) {
@@ -166,6 +220,8 @@ export async function POST(req) {
     }
 
     const successfulResults = results.filter(r => r.success);
+
+    console.log(`Scraping completed: ${successfulResults.length}/${validUrls.length} successful`);
 
     return NextResponse.json({
       success: true,
