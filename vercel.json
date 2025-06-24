@@ -1,0 +1,8 @@
+{
+  "functions": {
+    "app/api/finalise-portfolio/route.js": {
+      "memory": 512,
+      "maxDuration": 120
+    }
+  }
+}
