@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 
 // Helper function to validate URLs
 async function validateUrl(url) {
@@ -14,26 +16,17 @@ async function validateUrl(url) {
   }
 }
 
-// Dynamic browser launch function
+// Browser launch function optimized for Vercel
 async function getBrowserFromPool() {
-  try {
-    // Dynamic imports to avoid bundling issues
-    const { chromium } = await import('playwright-core');
-    const chromiumBinary = (await import('@sparticuz/chromium')).default;
-    
-    const executablePath = await chromiumBinary.executablePath();
-    
-    const browser = await chromium.launch({
-      args: chromiumBinary.args,
-      executablePath: executablePath,
-      headless: true,
-    });
-    
-    return browser;
-  } catch (error) {
-    console.error('Browser launch error:', error);
-    throw error;
-  }
+  const browser = await puppeteer.launch({
+    args: chromium.args,
+    defaultViewport: chromium.defaultViewport,
+    executablePath: await chromium.executablePath(),
+    headless: chromium.headless,
+    ignoreHTTPSErrors: true,
+  });
+  
+  return browser;
 }
 
 function returnBrowserToPool(browser) {
@@ -85,10 +78,9 @@ export async function POST(req) {
     const results = [];
     for (const url of validUrls) {
       try {
-        const context = await browser.newContext();
-        const page = await context.newPage();
+        const page = await browser.newPage();
         
-        page.setDefaultNavigationTimeout(15000);
+        await page.setDefaultTimeout(15000);
         
         await page.goto(url, { 
           waitUntil: 'domcontentloaded',
@@ -110,7 +102,7 @@ export async function POST(req) {
         const minimalHTML = extractRelevantSections(html);
         const minimalCSS = extractRelevantStyles(css);
 
-        await context.close();
+        await page.close();
         
         results.push({
           url,
