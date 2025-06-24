@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import puppeteer from 'puppeteer-core';
-import chromium from '@sparticuz/chromium';
+import * as cheerio from 'cheerio';
 
 // Helper function to validate URLs
 async function validateUrl(url) {
@@ -16,46 +15,88 @@ async function validateUrl(url) {
   }
 }
 
-// Browser launch function with correct configuration for Vercel
-async function getBrowserFromPool() {
-  const browser = await puppeteer.launch({
-    args: [
-      ...chromium.args,
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      '--single-process',
-      '--disable-gpu'
-    ],
-    defaultViewport: chromium.defaultViewport,
-    executablePath: await chromium.executablePath(),
-    headless: chromium.headless,
-    ignoreHTTPSErrors: true,
-  });
-  
-  return browser;
-}
+// Fetch HTML content using fetch API
+async function fetchPageContent(url) {
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+      },
+      timeout: 15000
+    });
 
-function returnBrowserToPool(browser) {
-  if (browser) {
-    browser.close();
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const html = await response.text();
+    return html;
+  } catch (error) {
+    throw new Error(`Failed to fetch ${url}: ${error.message}`);
   }
 }
 
+// Extract relevant content using Cheerio
 function extractRelevantSections(html) {
-  return html;
+  try {
+    const $ = cheerio.load(html);
+    
+    // Remove unwanted elements
+    $('script, noscript, style, iframe, embed, object').remove();
+    $('nav, header, footer, aside').remove();
+    $('.ad, .advertisement, .popup, .modal').remove();
+    $('[id*="ad"], [class*="ad"]').remove();
+    
+    // Extract main content areas
+    const mainContent = $('main, [role="main"], .main, .content, .post, .article, article').html() || 
+                       $('body').html();
+    
+    // Clean up the HTML
+    const cleanedHtml = mainContent
+      .replace(/\s+/g, ' ')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .trim();
+    
+    return cleanedHtml;
+  } catch (error) {
+    console.error('Error extracting sections:', error);
+    return html;
+  }
 }
 
-function extractRelevantStyles(css) {
-  return css;
+// Extract CSS styles using Cheerio
+function extractRelevantStyles(html) {
+  try {
+    const $ = cheerio.load(html);
+    
+    let styles = '';
+    
+    // Extract inline styles
+    $('style').each((i, el) => {
+      styles += $(el).html() + '\n';
+    });
+    
+    // Extract CSS link references
+    $('link[rel="stylesheet"]').each((i, el) => {
+      const href = $(el).attr('href');
+      if (href) {
+        styles += `/* External CSS: ${href} */\n`;
+      }
+    });
+    
+    return styles;
+  } catch (error) {
+    console.error('Error extracting styles:', error);
+    return '';
+  }
 }
 
 export async function POST(req) {
-  let browser;
-  
   try {
     const { urls } = await req.json();
     
@@ -63,12 +104,10 @@ export async function POST(req) {
       return NextResponse.json({ error: 'URLs array is required' }, { status: 400 });
     }
 
-    const urlsToScrape = urls.slice(0, 3);
+    // Limit number of URLs to scrape
+    const urlsToScrape = urls.slice(0, 5);
 
-    // Get browser instance
-    browser = await getBrowserFromPool();
-
-    // Validate URLs
+    // Validate URLs before scraping
     const validUrls = await Promise.all(
       urlsToScrape.map(async url => {
         const isValid = await validateUrl(url);
@@ -84,37 +123,38 @@ export async function POST(req) {
       });
     }
 
-    // Process URLs sequentially
+    // Process URLs sequentially to avoid overwhelming the target servers
     const results = [];
     for (const url of validUrls) {
       try {
-        const page = await browser.newPage();
+        // Fetch HTML content
+        const html = await fetchPageContent(url);
         
-        await page.goto(url, { 
-          waitUntil: 'domcontentloaded',
-          timeout: 15000 
-        });
-
-        const html = await page.content();
-        const css = await page.evaluate(() => {
-          try {
-            const styles = Array.from(document.querySelectorAll('style'))
-              .map(style => style.textContent || '')
-              .join('\n');
-            return styles;
-          } catch (e) {
-            return '';
-          }
-        });
-
-        await page.close();
+        // Extract relevant sections and styles
+        const minimalHTML = extractRelevantSections(html);
+        const minimalCSS = extractRelevantStyles(html);
+        
+        // Extract additional metadata using Cheerio
+        const $ = cheerio.load(html);
+        const title = $('title').text() || '';
+        const description = $('meta[name="description"]').attr('content') || '';
+        const keywords = $('meta[name="keywords"]').attr('content') || '';
         
         results.push({
           url,
-          html: extractRelevantSections(html),
-          css: extractRelevantStyles(css),
+          html: minimalHTML,
+          css: minimalCSS,
+          metadata: {
+            title: title.trim(),
+            description: description.trim(),
+            keywords: keywords.trim()
+          },
           success: true,
         });
+        
+        // Add small delay between requests to be respectful
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
       } catch (error) {
         console.error(`Failed to scrape ${url}:`, error.message);
         results.push({
@@ -130,7 +170,8 @@ export async function POST(req) {
     return NextResponse.json({
       success: true,
       data: successfulResults,
-      count: successfulResults.length
+      count: successfulResults.length,
+      method: 'cheerio'
     });
 
   } catch (error) {
@@ -139,9 +180,5 @@ export async function POST(req) {
       error: 'Scraping failed', 
       details: error.message 
     }, { status: 500 });
-  } finally {
-    if (browser) {
-      returnBrowserToPool(browser);
-    }
   }
 }
