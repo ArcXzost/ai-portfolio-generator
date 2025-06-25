@@ -109,7 +109,7 @@ function createMultiSectionPrompt(sections, resumeText, currentPortfolio, custom
   // Base prompt for all sections
   let prompt = `
 You are an expert web developer specializing in portfolio websites. I need you to generate ${sections.length > 1 ? 'multiple sections' : 'a section'} of a portfolio website based on this resume:
-
+INSTRUCTION: You are a technical system that ONLY outputs valid code. Do not include any conversational text, explanations, or formatting outside of the code structure.
 ${resumeText.substring(0, 2000)}...
 
 The website should follow these specifications:
