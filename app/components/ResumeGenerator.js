@@ -137,7 +137,55 @@ export default function ResumeGenerator() {
         setCurrentStage(`Generating ${pairNames}...`);
         setProgress(pairProgress);
         
-        // Make API call to generate this section pair
+        // NEW: Create design summary for this specific pair of sections
+        let designSummary = '';
+        if (scrapeData.data && scrapeData.data.length > 0) {
+          try {
+            setCurrentStage(`Analyzing design examples for ${pairNames}...`);
+            
+            console.log('Making summarize request for sections:', pair.map(s => s.name));
+            console.log('Scraped data count:', scrapeData.data.length);
+            
+            const summaryResponse = await fetch('/api/summarise-design', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                scrapedData: scrapeData.data, 
+                sections: pair.map(s => s.name)
+              })
+            });
+            
+            console.log('Summary response status:', summaryResponse.status);
+            console.log('Summary response ok:', summaryResponse.ok);
+            
+            if (summaryResponse.ok) {
+              try {
+                const summaryData = await summaryResponse.json();
+                console.log('Summary data received:', summaryData); // Debug log
+                
+                designSummary = summaryData.summary || '';
+                console.log(`Design summary created from ${summaryData.exampleCount || 0} examples for ${pairNames}`);
+                console.log('Design Summary Preview:', designSummary.substring(0, 200) + '...');
+              } catch (jsonError) {
+                console.error('Failed to parse summary JSON:', jsonError);
+                const responseText = await summaryResponse.text();
+                console.error('Raw response:', responseText);
+              }
+            } else {
+              // Log the error response
+              const errorText = await summaryResponse.text();
+              console.error('Summary response error:', summaryResponse.status, errorText);
+            }
+          } catch (error) {
+            console.error('Failed to create design summary:', error);
+            // Continue without summary if it fails
+          }
+        }
+        
+        // Update stage back to generation
+        setCurrentStage(`Generating ${pairNames}...`);
+        
+        // Make API call to generate this section pair with summarized design data
         const sectionResponse = await fetch('/api/generate-sections', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -146,7 +194,7 @@ export default function ResumeGenerator() {
             resumeText: resumeText,
             currentPortfolio: portfolio,
             customizations,
-            designData: scrapeData.data
+            designSummary: designSummary // Pass summary instead of raw data
           })
         });
         

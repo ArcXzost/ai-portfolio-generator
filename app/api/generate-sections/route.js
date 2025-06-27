@@ -8,25 +8,28 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Invalid API configuration' }, { status: 500 });
     }
 
-    const { sections, resumeText, currentPortfolio, customizations, designData } = await req.json();
+    const { sections, resumeText, currentPortfolio, customizations, designSummary } = await req.json();
     
     if (!sections || !Array.isArray(sections) || sections.length === 0 || !resumeText) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
     
     console.log(`Generating sections: ${sections.join(', ')}`);
+    if (designSummary) {
+      console.log('Using design summary for generation');
+    }
     
     // Initialize the AI model
     const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite-preview-06-17" });
     
-    // Create prompt for these sections
+    // Create prompt for these sections with design summary
     const prompt = createMultiSectionPrompt(
       sections, 
       resumeText, 
       currentPortfolio, 
       customizations,
-      designData
+      designSummary // Pass the summarized design data
     );
     
     // Generate content using AI
@@ -99,8 +102,8 @@ function parseSectionResults(responseText, requestedSections) {
   return results;
 }
 
-// Create a prompt for multiple sections at once
-function createMultiSectionPrompt(sections, resumeText, currentPortfolio, customizations, designData) {
+// UPDATED: Create a prompt for multiple sections with design summary
+function createMultiSectionPrompt(sections, resumeText, currentPortfolio, customizations, designSummary) {
   const theme = customizations?.theme || 'dark';
   const layout = customizations?.layout || 'modern';
   const colorScheme = customizations?.colorScheme || 'blue';
@@ -108,7 +111,7 @@ function createMultiSectionPrompt(sections, resumeText, currentPortfolio, custom
   
   // Base prompt for all sections
   let prompt = `
-You are an expert web developer specializing in portfolio websites. I need you to generate ${sections.length > 1 ? 'multiple sections' : 'a section'} of a portfolio website based on this resume:
+You are an expert UI/UX designer and web developer specializing in portfolio websites. I need you to generate ${sections.length > 1 ? 'multiple sections' : 'a section'} of a portfolio website based on this resume:
 INSTRUCTION: You are a technical system that ONLY outputs valid code. Do not include any conversational text, explanations, or formatting outside of the code structure.
 ${resumeText.substring(0, 2000)}...
 
@@ -169,8 +172,9 @@ Create a "Skills" section that:
         prompt += `
 Create a "Projects" section that:
 - Showcases 3-4 key projects from the resume
-- Includes project titles, descriptions, and technologies used
+- Include summarisations for description with keywords, project titles, descriptions, and technologies used
 - Uses a grid or card-based layout
+- content must fit gracefully and should not look clumsy
 - Maintains the ${theme} theme and ${colorScheme} color scheme
 `;
         break;
@@ -180,6 +184,7 @@ Create a "Projects" section that:
 Create an "Experience" section that:
 - Lists work experience from the resume
 - Includes job titles, companies, dates, and key responsibilities
+- Include summarisations for description with keywords, project titles, descriptions, and technologies used
 - Presents the information in a clean, chronological format
 - Maintains the ${theme} theme and ${colorScheme} color scheme
 `;
@@ -237,18 +242,14 @@ ${currentPortfolio.css.substring(0, 1000)}...
 `;
   }
 
-  // Add design examples if available
-  if (designData && designData.length > 0) {
+  // UPDATED: Add design summary with code patterns from multiple examples
+  if (designSummary) {
     prompt += `
-\n\nFor inspiration, here's a snippet from another portfolio website:
+\n\nDesign patterns and code examples from multiple portfolio websites for inspiration:
 
-\`\`\`html
-${designData[0].html.substring(0, 300)}...
-\`\`\`
+${designSummary}
 
-\`\`\`css
-${designData[0].css.substring(0, 300)}...
-\`\`\`
+Use these patterns as inspiration but adapt them to match the specified theme and color scheme.
 `;
   }
 

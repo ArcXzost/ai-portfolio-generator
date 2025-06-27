@@ -140,6 +140,109 @@ function extractRelevantStyles(html) {
   }
 }
 
+// NEW: Extract relevant sections as structured JSON
+function extractSectionSpecificData(html) {
+  try {
+    if (!html || typeof html !== 'string') {
+      return {};
+    }
+
+    const $ = cheerio.load(html);
+    const sections = {};
+    
+    // Header patterns
+    const headerSelectors = ['header', '.header', '#header', 'nav', '.nav', '.navbar'];
+    for (const selector of headerSelectors) {
+      const element = $(selector).first();
+      if (element.length > 0) {
+        sections.header = {
+          html: element.html().substring(0, 400),
+          classes: element.attr('class') || '',
+          structure: extractStructurePattern(element)
+        };
+        break;
+      }
+    }
+    
+    // About sections
+    const aboutSelectors = ['.about', '#about', '[class*="about"]', '.intro', '.profile'];
+    for (const selector of aboutSelectors) {
+      const element = $(selector).first();
+      if (element.length > 0) {
+        sections.about = {
+          html: element.html().substring(0, 400),
+          classes: element.attr('class') || '',
+          structure: extractStructurePattern(element)
+        };
+        break;
+      }
+    }
+    
+    // Skills sections
+    const skillsSelectors = ['.skills', '#skills', '.technologies', '.tech-stack', '[class*="skill"]'];
+    for (const selector of skillsSelectors) {
+      const element = $(selector).first();
+      if (element.length > 0) {
+        sections.skills = {
+          html: element.html().substring(0, 400),
+          classes: element.attr('class') || '',
+          structure: extractStructurePattern(element)
+        };
+        break;
+      }
+    }
+    
+    // Projects sections
+    const projectsSelectors = ['.projects', '#projects', '.portfolio', '.work', '[class*="project"]'];
+    for (const selector of projectsSelectors) {
+      const element = $(selector).first();
+      if (element.length > 0) {
+        sections.projects = {
+          html: element.html().substring(0, 400),
+          classes: element.attr('class') || '',
+          structure: extractStructurePattern(element)
+        };
+        break;
+      }
+    }
+    
+    // Experience sections
+    const experienceSelectors = ['.experience', '#experience', '.work-history', '[class*="experience"]'];
+    for (const selector of experienceSelectors) {
+      const element = $(selector).first();
+      if (element.length > 0) {
+        sections.experience = {
+          html: element.html().substring(0, 400),
+          classes: element.attr('class') || '',
+          structure: extractStructurePattern(element)
+        };
+        break;
+      }
+    }
+    
+    return sections;
+  } catch (error) {
+    console.error('Error extracting section data:', error);
+    return {};
+  }
+}
+
+// Helper to extract structural patterns
+function extractStructurePattern(element) {
+  const $ = cheerio;
+  const tagName = element.get(0).tagName;
+  const children = element.children().length;
+  const hasGrid = element.hasClass('grid') || element.css('display') === 'grid';
+  const hasFlex = element.hasClass('flex') || element.css('display') === 'flex';
+  
+  return {
+    tag: tagName,
+    children: children,
+    layout: hasGrid ? 'grid' : hasFlex ? 'flex' : 'block',
+    pattern: `${tagName} with ${children} children (${hasGrid ? 'grid' : hasFlex ? 'flex' : 'block'} layout)`
+  };
+}
+
 export async function POST(req) {
   try {
     const { urls } = await req.json();
@@ -182,24 +285,22 @@ export async function POST(req) {
           throw new Error('No HTML content received');
         }
         
-        // Extract relevant sections and styles
-        const minimalHTML = extractRelevantSections(html);
+        // Extract section-specific structured data
+        const sectionData = extractSectionSpecificData(html);
         const minimalCSS = extractRelevantStyles(html);
         
         // Extract additional metadata using Cheerio
         const $ = cheerio.load(html);
         const title = $('title').text() || '';
         const description = $('meta[name="description"]').attr('content') || '';
-        const keywords = $('meta[name="keywords"]').attr('content') || '';
         
         results.push({
           url,
-          html: minimalHTML,
-          css: minimalCSS,
+          sections: sectionData, // Structured section data instead of full HTML
+          css: minimalCSS.substring(0, 500), // Limit CSS size
           metadata: {
             title: title.trim(),
-            description: description.trim(),
-            keywords: keywords.trim()
+            description: description.trim()
           },
           success: true,
         });
@@ -222,6 +323,7 @@ export async function POST(req) {
     const successfulResults = results.filter(r => r.success);
 
     console.log(`Scraping completed: ${successfulResults.length}/${validUrls.length} successful`);
+    console.log('Sample scraped data structure:', JSON.stringify(successfulResults[0], null, 2));
 
     return NextResponse.json({
       success: true,

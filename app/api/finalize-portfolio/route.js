@@ -36,7 +36,7 @@ export async function POST(req) {
 async function runQualityCheck(html, css) {
   if (!process.env.GOOGLE_API_KEY) {
     console.warn('AI quality check skipped: No Google API Key');
-    return { html, css };
+    return { html, css, originalCss: css };
   }
   
   try {
@@ -93,7 +93,7 @@ Return your response in this exact format:
     
     if (!htmlMatch || !cssMatch) {
       console.warn('AI quality check: Could not extract HTML or CSS from response');
-      return { html, css };
+      return { html, css, originalCss: css };
     }
     
     const fixedHtml = htmlMatch[1] || html;
@@ -112,7 +112,7 @@ Return your response in this exact format:
   } catch (error) {
     console.error('AI quality check error:', error);
     // Fall back to the original if there's an error
-    return { html, css };
+    return { html, css, originalCss: css };
   }
 }
 
