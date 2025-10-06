@@ -24,6 +24,12 @@ const STAGE_TO_STEP = {
   'Generating portfolio...': 'layout',
   'Generating layout structure...': 'layout',
   
+  'Analyzing design examples for layout structure...': 'layout',
+  'Analyzing design examples for header section and about section...': 'header-about',
+  'Analyzing design examples for skills section and projects section...': 'skills-projects',
+  'Analyzing design examples for experience section and education section...': 'experience-education',
+  'Analyzing design examples for contact section and footer section...': 'contact-footer',
+
   // Merged section mappings
   'Generating header section and about section...': 'header-about',
   'Generating header section...': 'header-about',
