@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 
+const SECTION_HTML_LIMIT = 2000;
+const SECTION_TEXT_LIMIT = 600;
+const MAX_EXTERNAL_STYLESHEETS = 2;
+const EXTERNAL_CSS_CHAR_LIMIT = 3000;
+
 // Helper function to validate URLs
 async function validateUrl(url) {
   try {
@@ -107,32 +112,58 @@ function extractRelevantSections(html) {
 }
 
 // Extract CSS styles using Cheerio with null checks
-function extractRelevantStyles(html) {
+async function extractRelevantStyles(html, baseUrl) {
   try {
     if (!html || typeof html !== 'string') {
       return '';
     }
 
     const $ = cheerio.load(html);
-    
     let styles = '';
-    
+
     // Extract inline styles
     $('style').each((i, el) => {
       const styleContent = $(el).html();
       if (styleContent) {
-        styles += styleContent + '\n';
+        styles += `/* Inline style block ${i + 1} */\n${styleContent}\n`;
       }
     });
-    
-    // Extract CSS link references
+
+    // Extract external stylesheet content (limit to avoid huge payloads)
+    const externalLinks = [];
     $('link[rel="stylesheet"]').each((i, el) => {
       const href = $(el).attr('href');
       if (href) {
-        styles += `/* External CSS: ${href} */\n`;
+        try {
+          const absoluteUrl = new URL(href, baseUrl).toString();
+          externalLinks.push(absoluteUrl);
+        } catch (err) {
+          console.warn(`Failed to resolve stylesheet URL ${href} from ${baseUrl}:`, err.message);
+        }
       }
     });
-    
+
+    const limitedLinks = externalLinks.slice(0, MAX_EXTERNAL_STYLESHEETS);
+    for (const link of limitedLinks) {
+      try {
+        const response = await fetch(link, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Accept': 'text/css,*/*;q=0.1'
+          }
+        });
+
+        if (response.ok) {
+          const css = await response.text();
+          styles += `/* External CSS from ${link} */\n${css.substring(0, EXTERNAL_CSS_CHAR_LIMIT)}\n`;
+        } else {
+          console.warn(`Failed to fetch CSS from ${link}: ${response.status}`);
+        }
+      } catch (error) {
+        console.warn(`Error fetching external stylesheet ${link}:`, error.message);
+      }
+    }
+
     return styles;
   } catch (error) {
     console.error('Error extracting styles:', error);
@@ -149,17 +180,44 @@ function extractSectionSpecificData(html) {
 
     const $ = cheerio.load(html);
     const sections = {};
+
+    const captureSection = (element) => {
+      if (!element || element.length === 0) return null;
+      const outerHtml = $.html(element);
+      const textContent = element.text().replace(/\s+/g, ' ').trim();
+      return {
+        html: outerHtml ? outerHtml.substring(0, SECTION_HTML_LIMIT) : '',
+        text: textContent ? textContent.substring(0, SECTION_TEXT_LIMIT) : '',
+        classes: element.attr('class') || '',
+        id: element.attr('id') || '',
+        structure: extractStructurePattern($, element)
+      };
+    };
+
+    // Layout / overall structure (fallbacks ensure we capture something meaningful)
+    const layoutCandidates = ['main', 'body > div', 'body'];
+    for (const selector of layoutCandidates) {
+      const element = $(selector).first();
+      if (element.length > 0) {
+        const layoutData = captureSection(element);
+        if (layoutData) {
+          layoutData.structure.selector = selector;
+          sections['layout-structure'] = layoutData;
+          break;
+        }
+      }
+    }
     
     // Header patterns
     const headerSelectors = ['header', '.header', '#header', 'nav', '.nav', '.navbar'];
     for (const selector of headerSelectors) {
       const element = $(selector).first();
       if (element.length > 0) {
-        sections.header = {
-          html: element.html().substring(0, 400),
-          classes: element.attr('class') || '',
-          structure: extractStructurePattern(element)
-        };
+        const headerData = captureSection(element);
+        if (headerData) {
+          headerData.structure.selector = selector;
+          sections.header = headerData;
+        }
         break;
       }
     }
@@ -169,11 +227,11 @@ function extractSectionSpecificData(html) {
     for (const selector of aboutSelectors) {
       const element = $(selector).first();
       if (element.length > 0) {
-        sections.about = {
-          html: element.html().substring(0, 400),
-          classes: element.attr('class') || '',
-          structure: extractStructurePattern(element)
-        };
+        const aboutData = captureSection(element);
+        if (aboutData) {
+          aboutData.structure.selector = selector;
+          sections.about = aboutData;
+        }
         break;
       }
     }
@@ -183,11 +241,11 @@ function extractSectionSpecificData(html) {
     for (const selector of skillsSelectors) {
       const element = $(selector).first();
       if (element.length > 0) {
-        sections.skills = {
-          html: element.html().substring(0, 400),
-          classes: element.attr('class') || '',
-          structure: extractStructurePattern(element)
-        };
+        const skillsData = captureSection(element);
+        if (skillsData) {
+          skillsData.structure.selector = selector;
+          sections.skills = skillsData;
+        }
         break;
       }
     }
@@ -197,11 +255,11 @@ function extractSectionSpecificData(html) {
     for (const selector of projectsSelectors) {
       const element = $(selector).first();
       if (element.length > 0) {
-        sections.projects = {
-          html: element.html().substring(0, 400),
-          classes: element.attr('class') || '',
-          structure: extractStructurePattern(element)
-        };
+        const projectsData = captureSection(element);
+        if (projectsData) {
+          projectsData.structure.selector = selector;
+          sections.projects = projectsData;
+        }
         break;
       }
     }
@@ -211,11 +269,50 @@ function extractSectionSpecificData(html) {
     for (const selector of experienceSelectors) {
       const element = $(selector).first();
       if (element.length > 0) {
-        sections.experience = {
-          html: element.html().substring(0, 400),
-          classes: element.attr('class') || '',
-          structure: extractStructurePattern(element)
-        };
+        const experienceData = captureSection(element);
+        if (experienceData) {
+          experienceData.structure.selector = selector;
+          sections.experience = experienceData;
+        }
+        break;
+      }
+    }
+
+    const educationSelectors = ['.education', '#education', '[class*="education"]'];
+    for (const selector of educationSelectors) {
+      const element = $(selector).first();
+      if (element.length > 0) {
+        const educationData = captureSection(element);
+        if (educationData) {
+          educationData.structure.selector = selector;
+          sections.education = educationData;
+        }
+        break;
+      }
+    }
+
+    const contactSelectors = ['.contact', '#contact', '[class*="contact"]', 'form[action*="contact"]'];
+    for (const selector of contactSelectors) {
+      const element = $(selector).first();
+      if (element.length > 0) {
+        const contactData = captureSection(element);
+        if (contactData) {
+          contactData.structure.selector = selector;
+          sections.contact = contactData;
+        }
+        break;
+      }
+    }
+
+    const footerSelectors = ['footer', '.footer', '#footer'];
+    for (const selector of footerSelectors) {
+      const element = $(selector).first();
+      if (element.length > 0) {
+        const footerData = captureSection(element);
+        if (footerData) {
+          footerData.structure.selector = selector;
+          sections.footer = footerData;
+        }
         break;
       }
     }
@@ -228,16 +325,27 @@ function extractSectionSpecificData(html) {
 }
 
 // Helper to extract structural patterns
-function extractStructurePattern(element) {
-  const $ = cheerio;
-  const tagName = element.get(0).tagName;
+function extractStructurePattern($, element) {
+  if (!element || element.length === 0) {
+    return {
+      tag: 'div',
+      children: 0,
+      layout: 'unknown',
+      pattern: 'No structure information'
+    };
+  }
+
+  const node = element.get(0);
+  const tagName = (node && (node.tagName || node.name)) ? (node.tagName || node.name) : 'div';
   const children = element.children().length;
-  const hasGrid = element.hasClass('grid') || element.css('display') === 'grid';
-  const hasFlex = element.hasClass('flex') || element.css('display') === 'flex';
-  
+  const classAttr = element.attr('class') || '';
+  const inlineStyle = element.attr('style') || '';
+  const hasGrid = classAttr.includes('grid') || inlineStyle.includes('grid') || element.find('[class*="grid"]').length > 0;
+  const hasFlex = classAttr.includes('flex') || inlineStyle.includes('flex') || element.find('[class*="flex"]').length > 0;
+
   return {
     tag: tagName,
-    children: children,
+    children,
     layout: hasGrid ? 'grid' : hasFlex ? 'flex' : 'block',
     pattern: `${tagName} with ${children} children (${hasGrid ? 'grid' : hasFlex ? 'flex' : 'block'} layout)`
   };
@@ -286,8 +394,8 @@ export async function POST(req) {
         }
         
         // Extract section-specific structured data
-        const sectionData = extractSectionSpecificData(html);
-        const minimalCSS = extractRelevantStyles(html);
+  const sectionData = extractSectionSpecificData(html);
+  const minimalCSS = await extractRelevantStyles(html, url);
         
         // Extract additional metadata using Cheerio
         const $ = cheerio.load(html);
@@ -297,7 +405,7 @@ export async function POST(req) {
         results.push({
           url,
           sections: sectionData, // Structured section data instead of full HTML
-          css: minimalCSS.substring(0, 500), // Limit CSS size
+          css: minimalCSS.substring(0, 4000), // Provide richer CSS context with a safe limit
           metadata: {
             title: title.trim(),
             description: description.trim()

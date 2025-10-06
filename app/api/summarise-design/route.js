@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+const MAX_TOTAL_CONTEXT_CHARS = 24000;
+const MAX_SITES_ANALYZED = 4;
+const HTML_SECTION_LIMIT = 1500;
+const TEXT_SECTION_LIMIT = 500;
+const CSS_SAMPLE_LIMIT = 2500;
+const CSS_SAMPLE_FALLBACK_LIMIT = 1500;
+
 export async function POST(req) {
   try {
     console.log('Summarise-design API called');
@@ -28,7 +35,8 @@ export async function POST(req) {
       return {
         url: site.url,
         title: site.metadata?.title || 'Unknown',
-        sections: relevantSections
+        sections: relevantSections,
+        cssSample: site.css || ''
       };
     }).filter(site => Object.keys(site.sections).length > 0);
     
@@ -47,29 +55,89 @@ export async function POST(req) {
     
     const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite-preview-06-17" });
-    
-    const dataToAnalyze = JSON.stringify(relevantData, null, 2);
+
+    const buildDataset = (siteCount, htmlLimit, textLimit, cssLimit) => {
+      return relevantData.slice(0, siteCount).map(site => {
+        const truncatedSections = {};
+        Object.entries(site.sections).forEach(([sectionName, sectionData]) => {
+          if (!sectionData) return;
+          truncatedSections[sectionName] = {
+            ...sectionData,
+            html: sectionData.html ? sectionData.html.substring(0, htmlLimit) : '',
+            text: sectionData.text ? sectionData.text.substring(0, textLimit) : '',
+          };
+        });
+
+        return {
+          url: site.url,
+          title: site.title,
+          sections: truncatedSections,
+          cssSample: site.cssSample ? site.cssSample.substring(0, cssLimit) : ''
+        };
+      });
+    };
+
+    let siteCount = Math.min(relevantData.length, MAX_SITES_ANALYZED);
+    let htmlLimit = HTML_SECTION_LIMIT;
+    let textLimit = TEXT_SECTION_LIMIT;
+    let cssLimit = CSS_SAMPLE_LIMIT;
+    let dataToAnalyze = '';
+    let truncatedData = [];
+
+    while (siteCount > 0) {
+      truncatedData = buildDataset(siteCount, htmlLimit, textLimit, cssLimit);
+      dataToAnalyze = JSON.stringify(truncatedData, null, 2);
+      if (dataToAnalyze.length <= MAX_TOTAL_CONTEXT_CHARS) {
+        break;
+      }
+
+      if (cssLimit > CSS_SAMPLE_FALLBACK_LIMIT) {
+        cssLimit = Math.max(CSS_SAMPLE_FALLBACK_LIMIT, cssLimit - 500);
+        continue;
+      }
+
+      if (htmlLimit > 900) {
+        htmlLimit = Math.max(900, htmlLimit - 200);
+        continue;
+      }
+
+      if (textLimit > 300) {
+        textLimit = Math.max(300, textLimit - 100);
+        continue;
+      }
+
+      siteCount -= 1;
+    }
+
+    if (dataToAnalyze.length > MAX_TOTAL_CONTEXT_CHARS) {
+      // Final safeguard: trim string directly if still over limit
+      dataToAnalyze = dataToAnalyze.substring(0, MAX_TOTAL_CONTEXT_CHARS);
+      console.warn('Design summary dataset trimmed to max context size.');
+    }
+
     console.log('Data size being sent to AI:', dataToAnalyze.length, 'characters');
     
     const prompt = `
 Analyze these portfolio website examples and create a concise summary with code patterns for sections: ${sections.join(', ')}.
 
-Data from ${relevantData.length} websites:
+Data from ${truncatedData.length || relevantData.length} websites (content truncated as needed to fit model context):
 ${dataToAnalyze}
 
 For each section type found, provide:
 1. Common structural patterns
-2. Key CSS classes and approaches
-3. Layout strategies
-4. Brief code snippets (max 2-3 lines)
+2. Key CSS classes, responsive behaviors, and layout techniques (reference cssSample when available)
+3. Layout strategies and accessibility considerations
+4. Brief HTML and CSS code snippets (max 2-3 lines each) directly derived from the provided data
+5. Notes on how to adapt the pattern when limited examples are available (infer best practices if necessary)
 
 Keep total response under 800 words with focus on actionable code patterns.
 Format as JSON with this structure:
 {
   "sectionName": {
     "patterns": ["pattern1", "pattern2"],
-    "codeSnippets": ["<div class='...'", "display: flex;"],
-    "layoutApproach": "description"
+    "codeSnippets": ["<div class='...'>", "display: flex;"],
+    "layoutApproach": "description",
+    "responsiveNotes": "key adjustments for mobile/tablet"
   }
 }
 `;

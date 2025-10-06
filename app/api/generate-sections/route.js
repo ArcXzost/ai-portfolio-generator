@@ -120,6 +120,11 @@ The website should follow these specifications:
 - Layout: ${layout}
 - Color scheme: ${colorScheme}
 - Font family: ${fontFamily}
+- Must be fully responsive with a mobile-first approach. Use fluid, responsive units (%, rem, vw) and avoid fixed pixel widths.
+- Include CSS media queries at minimum for max-width: 1024px, 768px, and 480px to optimize tablet and small-screen layouts.
+- On narrow screens (≤480px) stack columns vertically, provide generous spacing for tap targets, and keep typography legible.
+- Prefer modern layout techniques (Flexbox or CSS Grid) and ensure no horizontal scrolling on devices down to 360px wide.
+- Keep the HTML semantic and accessible with appropriate landmarks.
 
 ${sections.length > 1 ? `I need you to generate the following sections: ${sections.join(', ')}` : `I need you to generate the ${sections[0]} section`}
 `;
@@ -134,6 +139,7 @@ ${sections.length > 1 ? `I need you to generate the following sections: ${sectio
 Create the overall HTML structure for a portfolio website. Do not include the actual content sections yet. 
 Just provide the base HTML with appropriate div containers, classes, and structure that will house all the future sections.
 Focus on creating a clean, semantic layout with well-named classes.
+Ensure the layout supports responsive behavior from the start (e.g., wrapper containers that can switch between horizontal and vertical stacking with media queries).
 `;
         break;
         
@@ -144,6 +150,7 @@ Create the header section including navigation. It should have:
 - A professional title/role
 - Navigation links to other sections of the portfolio
 - Professional, clean design matching the ${theme} theme and ${colorScheme} color scheme
+- Responsive behavior: On screens ≤768px, stack the branding above navigation, and ensure navigation links wrap or collapse into a mobile-friendly layout without relying on JavaScript.
 `;
         break;
         
@@ -155,6 +162,7 @@ Create an "About Me" section that:
 - Presents their personality and working style
 - Includes any personal details that might be relevant to employers
 - Maintains the ${theme} theme and ${colorScheme} color scheme
+- For small screens, stack text blocks vertically with comfortable spacing and ensure images scale fluidly.
 `;
         break;
       
@@ -165,6 +173,7 @@ Create a "Skills" section that:
 - Organizes them by category or proficiency
 - Presents them in a visually appealing way (progress bars, tags, etc.)
 - Maintains the ${theme} theme and ${colorScheme} color scheme
+- Use responsive layouts so skill items wrap into one column on small screens and preserve readability without overflow.
 `;
         break;
       
@@ -176,6 +185,7 @@ Create a "Projects" section that:
 - Uses a grid or card-based layout
 - content must fit gracefully and should not look clumsy
 - Maintains the ${theme} theme and ${colorScheme} color scheme
+- Ensure the project grid collapses to a single-column stack on narrow screens with adequate spacing and consistent card sizing.
 `;
         break;
       
@@ -187,6 +197,7 @@ Create an "Experience" section that:
 - Include summarisations for description with keywords, project titles, descriptions, and technologies used
 - Presents the information in a clean, chronological format
 - Maintains the ${theme} theme and ${colorScheme} color scheme
+- Guarantee timeline or columns adapt to single-column flow on mobile while keeping date and role information clear.
 `;
         break;
       
@@ -197,6 +208,7 @@ Create an "Education" section that:
 - Includes degrees, institutions, dates, and any notable achievements
 - Presents the information in a clean format
 - Maintains the ${theme} theme and ${colorScheme} color scheme
+- Ensure the layout naturally stacks on smaller screens with readable spacing and font sizes.
 `;
         break;
       
@@ -207,6 +219,7 @@ Create a "Contact" section that:
 - May have a simple contact form
 - Includes social media links if appropriate
 - Maintains the ${theme} theme and ${colorScheme} color scheme
+- Ensure form inputs and buttons span full width on small screens with adequate spacing for touch interactions.
 `;
         break;
       
@@ -217,6 +230,7 @@ Create a footer section that:
 - May have additional navigation links
 - Has a clean, minimal design
 - Maintains the ${theme} theme and ${colorScheme} color scheme
+- Guarantee footer content stacks vertically on mobile and remains centered without overflow.
 `;
         break;
       

@@ -59,6 +59,7 @@ COMMON ISSUES TO FIX:
 6. Check that all sections are properly styled and visually appealing
 7. Ensure all links have proper href attributes (even if placeholder)
 8. Check for and fix layout issues or unbalanced elements
+9. Audit responsiveness. Add or adjust CSS so the layout remains usable on screens down to 360px wide, including appropriate media queries and flexible units.
 
 HTML to review:
 \`\`\`html
@@ -72,6 +73,7 @@ ${css}
 
 Please fix any issues found and return only the cleaned-up HTML and CSS without any explanations or summary.
 If you find any instructional text mixed in with actual content, remove it while keeping the real content.
+If responsive behavior is missing, add the necessary CSS adjustments so the result is mobile-friendly (e.g., stack columns, adjust spacing/typography, prevent horizontal scroll).
 
 Return your response in this exact format:
 \`\`\`html
